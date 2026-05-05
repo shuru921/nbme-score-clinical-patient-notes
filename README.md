@@ -1,21 +1,20 @@
 # NBME - Score Clinical Patient Notes
 
-本專案目前已完成 preprocessing。接下來的主線是：讀取 preprocess 後的
-<mark>`train_preprocessed_5fold.pkl`</mark>，建立 tokenization 與 label，訓練模型，做 validation 後處理，最後輸出 <mark>`submission.csv`</mark>。
+競賽目標：從醫學病歷中，自動找出對應的臨床關鍵特徵
 
 ## 資料檔案
 
-原始 Kaggle 資料放在：
+原始 Kaggle 資料：
 
-- <mark>`data/nbme-score-clinical-patient-notes/train.csv`</mark>
-- <mark>`data/nbme-score-clinical-patient-notes/test.csv`</mark>
-- <mark>`data/nbme-score-clinical-patient-notes/features.csv`</mark>
-- <mark>`data/nbme-score-clinical-patient-notes/patient_notes.csv`</mark>
-- <mark>`data/nbme-score-clinical-patient-notes/sample_submission.csv`</mark>
+- <mark>`train.csv`</mark>/<mark>`test.csv`</mark>/<mark>`features.csv`</mark>/ <mark>`patient_notes.csv`</mark>/<mark>`sample_submission.csv`</mark>
 
-preprocess 後的訓練資料：
+整理後之訓練集：
 
-- <mark>`data/nbme-score-clinical-patient-notes/processed/train_preprocessed_5fold.pkl`</mark>
+- <mark>`train_preprocessed_5fold.pkl`</mark>
+
+整理後之測試集：
+
+- <mark>`test_preprocessed.pkl`</mark>
 
 ## Preprocess 產出欄位
 
@@ -106,12 +105,10 @@ char_spans + offset_mapping
 規則：
 
 ```text
-special token / padding / feature_text token -> label = -100
+special token / padding / feature_text token -> label = -100（計算loss時呼略）
 pn_history token 且與任一 char_span 重疊 -> label = 1
 pn_history token 但沒有與 char_span 重疊 -> label = 0
 ```
-
-<mark>`-100`</mark> 代表 loss 計算時忽略該 token。
 
 例子：
 
@@ -141,29 +138,10 @@ input_ids
 attention_mask
 labels
 ```
-
-如果模型需要，也可以包含：
-
-```text
-token_type_ids
-```
-
-不直接餵給模型，但需要保留給 validation / debug 的欄位：
-
-```text
-id
-pn_history
-feature_text
-char_spans
-offset_mapping
-case_num
-pn_num
-feature_num
-```
+(<mark>`token_type_ids`</mark>看選的模型需不需要)
 
 ## Validation 後處理
 
-validation inference 後，模型會輸出每個 token 的 logits。   
 流程：
 
 ```text
@@ -181,18 +159,12 @@ offset_mapping
 ↓
 predicted character spans
 ```
-
-常見 threshold：
-
-```text
-0.5
-```
-
-但實際應該在 validation 上調整。
+validation inference 後，模型會輸出每個 token 的 logits 
+threshold 在 validation 上調整 常見 threshold：0.5
 
 decode 時需要做：
 
-- 把預測為答案的 token 用 <mark>`offset_mapping`</mark> 轉回 character span。
+- 把預測為答案的 token 用 <mark>`offset_mapping`</mark> 轉回 <mark>`character span`</mark>。
 - 相鄰或中間只隔空白的 token 合併成同一段 span。
 - 多個不連續答案用分號串起來。
 - 沒有預測答案時輸出空字串。
@@ -214,34 +186,7 @@ FN = 沒預測到但應該預測的 character
 
 ## Test Inference 與 Submission
 
-test 資料需要先 merge：
-
-```text
-test.csv
-+ patient_notes.csv
-+ features.csv
-```
-
-得到和訓練 inference 一致的欄位：
-
-```text
-id
-case_num
-pn_num
-feature_num
-pn_history
-feature_text
-```
-
-test 沒有：
-
-```text
-annotation_text
-char_spans
-fold
-```
-
-所以 test 只做：
+test 流程：
 
 ```text
 tokenization
@@ -266,13 +211,12 @@ id,location
 00016_002,100 110;150 165
 ```
 
-最後輸出：
-
-- <mark>`submission.csv`</mark>
+最後輸出：<mark>`submission.csv`</mark>
 
 ## Ensemble
 
-ensemble 在 token probability 階段平均：
+ensemble 在 token probability 階段平均：    
+(平均 token probabilities 保留更多 token-level 資訊通常比起各模型先 decode 成 span 後再投票更穩)
 
 ```text
 model_1 probabilities
@@ -286,7 +230,7 @@ threshold
 decode to character spans
 ```
 
-平均 token probabilities 保留更多 token-level 資訊通常比起各模型先 decode 成 span 後再投票更穩。
+
 
 ## 整體流程
 
