@@ -32,7 +32,7 @@
 | `char_spans` | 真實答案在 `pn_history` 裡的 character span，例如 `[(203, 217)]`。建立 token label 與 validation scoring 時使用。 |
 | `fold` | 5-fold split 編號。訓練時用 `fold != k`，驗證時用 `fold == k`。 |
 
-訓練最核心會用到：
+訓練核心會用到：
 
 ```text
 pn_history
@@ -42,11 +42,9 @@ fold
 id
 ```
 
-其中 `annotation_text` 通常不直接餵給模型；真正的 label 來源是 `char_spans`。
-
 ## 使用之模型
 
-使用 `token classification`(可以直接預測每個 token 是否屬於答案 `start/end prediction` 較適合單一連續 span)
+使用 `token classification`( 可以直接預測每個 token 是否屬於答案 `start/end prediction` 較適合單一連續 span )
 
 因為 NBME 的答案可能有多段、不連續 span，例如：
 
@@ -93,6 +91,7 @@ tokenizer 產生：
 | `offset_mapping` | 每個 token 對應回原始文字的 character range。建立 label 與 validation decode 時使用。 |
 
 ## Label Building
+token-level labels ( 訓練時的 ground truth label )
 
 label building 使用：
 
@@ -174,7 +173,7 @@ decode 時需要做：
 203 217;300 315
 ```
 
-validation scoring 建議使用 character-level F1 (micro F1)：
+validation scoring 使用 character-level F1 (micro F1)：
 
 ```text
 TP = 預測且正確的 character
