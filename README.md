@@ -6,31 +6,31 @@
 
 原始 Kaggle 資料：
 
-- <mark>`train.csv`</mark>/<mark>`test.csv`</mark>/<mark>`features.csv`</mark>/ <mark>`patient_notes.csv`</mark>/<mark>`sample_submission.csv`</mark>
+- `train.csv` / `test.csv` / `features.csv` / `patient_notes.csv` / `sample_submission.csv`
 
 整理後之訓練集：
 
-- <mark>`train_preprocessed_5fold.pkl`</mark>
+- `train_preprocessed_5fold.pkl`
 
 整理後之測試集：
 
-- <mark>`test_preprocessed.pkl`</mark>
+- `test_preprocessed.pkl`
 
 ## Preprocess 產出欄位
 
-<mark>`train_preprocessed_5fold.pkl`</mark> 目前包含以下欄位：
+`train_preprocessed_5fold.pkl` 目前包含以下欄位：
 
 | 欄位 | 用途 |
 | --- | --- |
-| <mark>`id`</mark> | 每筆資料的唯一 ID。validation decode、錯誤分析、submission 對回資料時使用。 |
-| <mark>`case_num`</mark> | 病例類別。主要用於分 fold、檢查 case 分布，也可做 case-level 分析。 |
-| <mark>`pn_num`</mark> | patient note 編號。分 fold 時避免同一份 note 同時出現在 train / valid。 |
-| <mark>`feature_num`</mark> | feature 編號。與 <mark>`case_num`</mark> 一起決定要找的 clinical feature。 |
-| <mark>`pn_history`</mark> | patient note 原文。模型要從這段文字中找答案 span。 |
-| <mark>`feature_text`</mark> | 要尋找的 clinical feature。tokenization 時會和 <mark>`pn_history`</mark> 一起作為模型輸入。 |
-| <mark>`annotation_text`</mark> | 標註文字內容。主要用於 debug / 檢查，不是訓練 label 的主要來源。 |
-| <mark>`char_spans`</mark> | 真實答案在 <mark>`pn_history`</mark> 裡的 character span，例如 <mark>`[(203, 217)]`</mark>。建立 token label 與 validation scoring 時使用。 |
-| <mark>`fold`</mark> | 5-fold split 編號。訓練時用 <mark>`fold != k`</mark>，驗證時用 <mark>`fold == k`</mark>。 |
+| `id` | 每筆資料的唯一 ID。validation decode、錯誤分析、submission 對回資料時使用。 |
+| `case_num` | 病例類別。主要用於分 fold、檢查 case 分布，也可做 case-level 分析。 |
+| `pn_num` | patient note 編號。分 fold 時避免同一份 note 同時出現在 train / valid。 |
+| `feature_num` | feature 編號。與 `case_num` 一起決定要找的 clinical feature。 |
+| `pn_history` | patient note 原文。模型要從這段文字中找答案 span。 |
+| `feature_text` | 要尋找的 clinical feature。tokenization 時會和 `pn_history` 一起作為模型輸入。 |
+| `annotation_text` | 標註文字內容。主要用於 debug / 檢查，不是訓練 label 的主要來源。 |
+| `char_spans` | 真實答案在 `pn_history` 裡的 character span，例如 `[(203, 217)]`。建立 token label 與 validation scoring 時使用。 |
+| `fold` | 5-fold split 編號。訓練時用 `fold != k`，驗證時用 `fold == k`。 |
 
 訓練最核心會用到：
 
@@ -42,11 +42,11 @@ fold
 id
 ```
 
-其中 <mark>`annotation_text`</mark> 通常不直接餵給模型；真正的 label 來源是 <mark>`char_spans`</mark>。
+其中 `annotation_text` 通常不直接餵給模型；真正的 label 來源是 `char_spans`。
 
 ## 使用之模型
 
-使用 <mark>`token classification`</mark>。
+使用 `token classification`(可以直接預測每個 token 是否屬於答案 `start/end prediction` 較適合單一連續 span)
 
 因為 NBME 的答案可能有多段、不連續 span，例如：
 
@@ -54,13 +54,11 @@ id
 203 217;300 315
 ```
 
-<mark>`token classification`</mark> 可以直接預測每個 token 是否屬於答案，比 <mark>`start/end prediction`</mark> 更直覺。    <mark>`start/end prediction`</mark> 比較像 QA 任務，天然較適合單一連續 span。
-
 不同 backbone：
 
-- <mark>`microsoft/deberta-v3-base`</mark>
-- <mark>`microsoft/deberta-v3-large`</mark>
-- <mark>`roberta-large`</mark>
+- `microsoft/deberta-v3-base`
+- `roberta-large`
+- `ClinicalBERT`
 
 ## Tokenization
 
@@ -70,7 +68,7 @@ tokenization 使用：
 feature_text + pn_history
 ```
 
--> <mark>`feature_text`</mark> :找尋目標， <mark>`pn_history`</mark> :內容
+-> `feature_text` : 找尋目標， `pn_history` : 內容
 
 範例：
 
@@ -89,10 +87,10 @@ tokenizer 產生：
 
 | 欄位 | 用途 |
 | --- | --- |
-| <mark>`input_ids`</mark> | 模型輸入 token ids。訓練時會餵給模型。 |
-| <mark>`attention_mask`</mark> | 告訴模型哪些位置是有效 token，哪些是 padding。訓練時會餵給模型。 |
-| <mark>`token_type_ids`</mark> | 部分模型會有，用來區分第一段與第二段。DeBERTa / RoBERTa 類模型不一定需要。 |
-| <mark>`offset_mapping`</mark> | 每個 token 對應回原始文字的 character range。建立 label 與 validation decode 時使用。 |
+| `input_ids` | 模型輸入 token ids。訓練時會餵給模型。 |
+| `attention_mask` | 告訴模型哪些位置是有效 token，哪些是 padding。訓練時會餵給模型。 |
+| `token_type_ids` | 部分模型會有，用來區分第一段與第二段。DeBERTa / RoBERTa 類模型不一定需要。 |
+| `offset_mapping` | 每個 token 對應回原始文字的 character range。建立 label 與 validation decode 時使用。 |
 
 ## Label Building
 
@@ -120,7 +118,7 @@ token: pressure  offset: (209, 217) -> label = 1
 token: denies    offset: (400, 406) -> label = 0
 ```
 
-注：<mark>`offset_mapping`</mark> 是在 tokenization 時產生。訓練時模型不需要直接吃 <mark>`offset_mapping`</mark>，但 validation 後處理一定會用到，所以 dataset 需要保留。
+注：`offset_mapping` 是在 tokenization 時產生。訓練時模型不需要直接吃 `offset_mapping`，但 validation 後處理一定會用到，所以 dataset 需要保留。
 
 ## Training
 
@@ -138,7 +136,7 @@ input_ids
 attention_mask
 labels
 ```
-(<mark>`token_type_ids`</mark>看選的模型需不需要)
+(`token_type_ids`看選的模型需不需要)
 
 ## Validation 後處理
 
@@ -164,7 +162,7 @@ threshold 在 validation 上調整 常見 threshold：0.5
 
 decode 時需要做：
 
-- 把預測為答案的 token 用 <mark>`offset_mapping`</mark> 轉回 <mark>`character span`</mark>。
+- 把預測為答案的 token 用 `offset_mapping` 轉回 `character span`。
 - 相鄰或中間只隔空白的 token 合併成同一段 span。
 - 多個不連續答案用分號串起來。
 - 沒有預測答案時輸出空字串。
@@ -211,7 +209,7 @@ id,location
 00016_002,100 110;150 165
 ```
 
-最後輸出：<mark>`submission.csv`</mark>
+最後輸出：`submission.csv`
 
 ## Ensemble
 
