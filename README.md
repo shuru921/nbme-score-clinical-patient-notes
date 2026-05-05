@@ -1,8 +1,8 @@
-# NBME - Score Clinical Patient Notes
+# NBME - Score Clinical Patient Notes 🩺 
 
 競賽目標：從醫學病歷中，自動找出對應的臨床關鍵特徵
 
-## 資料檔案
+## 📁 資料檔案
 
 原始 Kaggle 資料：
 
@@ -16,7 +16,7 @@
 
 - `test_preprocessed.pkl`
 
-## Preprocess 產出欄位
+## 🧹 Preprocess 產出欄位
 
 `train_preprocessed_5fold.pkl` 目前包含以下欄位：
 
@@ -42,7 +42,7 @@ fold
 id
 ```
 
-## 使用之模型
+## 🤖 使用之模型
 
 使用 `token classification`( 可以直接預測每個 token 是否屬於答案 `start/end prediction` 較適合單一連續 span )
 
@@ -58,15 +58,11 @@ id
 - `roberta-large`
 - `ClinicalBERT`
 
-## Tokenization
+## 🔤 Tokenization
 
 tokenization 使用：
-
-```text
-feature_text + pn_history
-```
-
--> `feature_text` : 找尋目標， `pn_history` : 內容
+`feature_text` + `pn_history`
+(`feature_text` : 找尋目標， `pn_history` : 內容)
 
 範例：
 
@@ -90,14 +86,11 @@ tokenizer 產生：
 | `token_type_ids` | 部分模型會有，用來區分第一段與第二段。DeBERTa / RoBERTa 類模型不一定需要。 |
 | `offset_mapping` | 每個 token 對應回原始文字的 character range。建立 label 與 validation decode 時使用。 |
 
-## Label Building
+## 🏷️ Label Building
 token-level labels ( 訓練時的 ground truth label )
 
 label building 使用：
-
-```text
-char_spans + offset_mapping
-```
+'char_spans' + 'offset_mapping'
 
 規則：
 
@@ -119,7 +112,7 @@ token: denies    offset: (400, 406) -> label = 0
 
 注：`offset_mapping` 是在 tokenization 時產生。訓練時模型不需要直接吃 `offset_mapping`，但 validation 後處理一定會用到，所以 dataset 需要保留。
 
-## Training
+## 🏋️ Training
 
 每個 fold 的切法：
 
@@ -137,7 +130,7 @@ labels
 ```
 (`token_type_ids`看選的模型需不需要)
 
-## Validation 後處理
+## ✅ Validation 後處理
 
 流程：
 
@@ -181,7 +174,7 @@ FP = 預測但不該預測的 character
 FN = 沒預測到但應該預測的 character
 ```
 
-## Test Inference 與 Submission
+## 🧪 Test Inference 與 Submission
 
 test 流程：
 
@@ -210,7 +203,7 @@ id,location
 
 最後輸出：`submission.csv`
 
-## Ensemble
+## 🔀 Ensemble
 
 ensemble 在 token probability 階段平均：    
 (平均 token probabilities 保留更多 token-level 資訊通常比起各模型先 decode 成 span 後再投票更穩)
@@ -229,7 +222,7 @@ decode to character spans
 
 
 
-## 整體流程
+## 🗺️ 整體流程
 
 ```text
 train_preprocessed_5fold.pkl
