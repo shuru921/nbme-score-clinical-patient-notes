@@ -90,7 +90,7 @@ tokenizer 產生：
 token-level labels ( 訓練時的 ground truth label )
 
 label building 使用：
-'char_spans' + 'offset_mapping'
+`char_spans` + `offset_mapping`
 
 規則：
 
