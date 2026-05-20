@@ -39,3 +39,17 @@ wandb/
 
 # logs
 *.log
+
+# yuyu's notebooks (teammate's work, not uploading)
+EDA.ipynb
+preprocess_data.ipynb
+
+# draft inference notebook (superseded by notebook770d150c35.ipynb)
+kaggle.ipynb
+
+# model output folder
+deberta-v3-large-v2/
+deberta-v3-large-v2-*.zip
+
+# empty folder placeholder
+reference/

@@ -1,294 +1,113 @@
-# NBME - Score Clinical Patient Notes 🩺 
+# NBME - Score Clinical Patient Notes (DeBERTa-v3)
 
-競賽目標：從醫學病歷中，自動找出對應的臨床關鍵特徵
+Kaggle 競賽 [NBME - Score Clinical Patient Notes](https://www.kaggle.com/competitions/nbme-score-clinical-patient-notes) 的訓練與推論程式碼，使用 `microsoft/deberta-v3-base` 和 `microsoft/deberta-v3-large`。
 
-## 📁 資料檔案
+## 任務說明
 
-原始 Kaggle 資料：
+從病人病歷（`pn_history`）中找出對應臨床特徵（`feature_text`）的文字片段（span extraction）。
 
-- `train.csv` / `test.csv` / `features.csv` / `patient_notes.csv` / `sample_submission.csv`
+- **輸入**：病歷文字 + 臨床特徵名稱
+- **輸出**：病歷中對應特徵的字元位置（`start end`）
+- **評估指標**：Character-level Micro F1
 
-整理後之訓練集：
+## 檔案說明
 
-- `train_preprocessed_5fold.pkl`
+| 檔案 | 說明 |
+|------|------|
+| `train_deberta_v3_base_colab.ipynb` | DeBERTa-v3-base 訓練（Google Colab） |
+| `train_deberta_v3_large_colab.ipynb` | DeBERTa-v3-large 訓練（Google Colab Pro，建議 A100） |
+| `infer-deberta-v3-base-colab.ipynb` | DeBERTa-v3-base 推論（Colab） |
+| `notebook770d150c35.ipynb` | DeBERTa-v3-large 推論，輸出 `submission.csv`（Kaggle 環境，實際提交版） |
+| `pipeline_summary.md` | 完整 pipeline 說明文件 |
+| `ref/` | 參考用 baseline notebook（librauee） |
 
-整理後之測試集：
+## 模型架構
 
-- `test_preprocessed.pkl`
-
-## 🧹 Preprocess 產出欄位
-
-`train_preprocessed_5fold.pkl` 目前包含以下欄位：
-
-| 欄位 | 用途 |
-| --- | --- |
-| `id` | 每筆資料的唯一 ID。validation decode、錯誤分析、submission 對回資料時使用。 |
-| `case_num` | 病例類別。主要用於分 fold、檢查 case 分布，也可做 case-level 分析。 |
-| `pn_num` | patient note 編號。分 fold 時避免同一份 note 同時出現在 train / valid。 |
-| `feature_num` | feature 編號。與 `case_num` 一起決定要找的 clinical feature。 |
-| `pn_history` | patient note 原文。模型要從這段文字中找答案 span。 |
-| `feature_text` | 要尋找的 clinical feature。tokenization 時會和 `pn_history` 一起作為模型輸入。 |
-| `annotation_text` | 標註文字內容。主要用於 debug / 檢查，不是訓練 label 的主要來源。 |
-| `char_spans` | 真實答案在 `pn_history` 裡的 character span，例如 `[(203, 217)]`。建立 token label 與 validation scoring 時使用。 |
-| `fold` | 5-fold split 編號。訓練時用 `fold != k`，驗證時用 `fold == k`。 |
-
-訓練核心會用到：
-
-```text
-pn_history
-feature_text
-char_spans
-fold
-id
+```
+[CLS] pn_history_tokens [SEP] feature_text_tokens [SEP]
+                    ↓
+             DeBERTa backbone
+                    ↓
+         last hidden states [batch, seq_len, hidden_size]
+                    ↓
+               Dropout(0.2)
+                    ↓
+           Linear(hidden_size → 1)
+                    ↓
+          token-level logits → sigmoid → char-level 機率 → span
 ```
 
-## 🤖 使用之模型
+Loss 使用 `BCEWithLogitsLoss`，只計算 pn_history 部分的 token（feature_text 和特殊 token 的 label 設為 -1 忽略）。
 
-使用 `token classification`( 可以直接預測每個 token 是否屬於答案 `start/end prediction` 較適合單一連續 span )
+## 訓練設定
 
-因為 NBME 的答案可能有多段、不連續 span，例如：
+| 超參數 | base | large |
+|--------|------|-------|
+| Epochs | 5 | 5 |
+| Batch size | 16 | 8（grad accum ×2，等效 16）|
+| Encoder LR | 2e-5 | 2e-5 |
+| Scheduler | Cosine | Cosine |
+| Max length | 325（動態計算）| 325（動態計算）|
+| Folds | 5-fold CV | 5-fold CV |
+| fp16 | ✗（PyTorch 2.6 相容性問題）| ✗ |
 
-```text
-203 217;300 315
+使用 differential LR（backbone 和分類頭分開設定）。
+
+## 結果
+
+| 指標 | 數值 |
+|------|------|
+| CV Score (5-fold OOF, th=0.51) | **0.852** |
+| Public LB | **0.859** |
+| Private Score | **0.862** |
+
+## 資料來源
+
+前處理後的資料由組員整理，來源：[yuyu-819/NBME_Score-Clinical-Patient-Notes](https://github.com/yuyu-819/NBME_Score-Clinical-Patient-Notes)
+
+使用的檔案：
+- `train_preprocessed_5fold.pkl`：訓練資料，已合併三表、解析 char_spans、完成 5-fold 切分（共 14,300 筆）
+- `test_preprocessed.pkl`：測試資料
+
+## 資料流程
+
+```
+train_preprocessed_5fold.pkl  ← 來自 yuyu-819/NBME_Score-Clinical-Patient-Notes
+        ↓
+  feature_text 前處理（dash → 空白）
+        ↓
+  DebertaV2TokenizerFast tokenize
+        ↓
+  建立 token-level label（依 char_spans）
+        ↓
+  5-fold 訓練 → 每 epoch 計算 char-level F1 → 存最佳模型
+        ↓
+  oof_df.pkl（供 inference threshold tuning）
+        ↓
+  Kaggle inference → submission.csv
 ```
 
-不同 backbone：
+## 使用方式
 
-- `microsoft/deberta-v3-base`
-- `roberta-large`
-- `ClinicalBERT`
+### 訓練（Colab）
 
-## 🔤 Tokenization
+1. 從 [yuyu-819/NBME_Score-Clinical-Patient-Notes](https://github.com/yuyu-819/NBME_Score-Clinical-Patient-Notes) 取得前處理好的資料，上傳至 Google Drive：
+   ```
+   MyDrive/NBME_Score-Clinical-Patient-Notes/data/.../processed/
+   ├── train_preprocessed_5fold.pkl
+   └── test_preprocessed.pkl
+   ```
+2. 開啟對應的訓練 notebook，修改 `BASE_DIR` / `OUTPUT_DIR` 路徑後執行。
+3. 輸出的模型權重和 `oof_df.pkl` 會存到 `OUTPUT_DIR`。
 
-tokenization 使用：
-`feature_text` + `pn_history`
-(`feature_text` : 找尋目標， `pn_history` : 內容)
+### 推論（Kaggle）
 
-範例：
+1. 將訓練輸出（`config.pth`、`tokenizer/`、`oof_df.pkl`、5 個 fold 的 `.pth`）上傳為 Kaggle Dataset。
+2. 在 `notebook770d150c35.ipynb` 中修改 `MODEL_DIR` 指向該 Dataset。
+3. 執行 notebook，輸出 `/kaggle/working/submission.csv`。
 
-```python
-encoded = tokenizer(
-    feature_text,
-    pn_history,
-    truncation="only_second",
-    max_length=512,
-    padding="max_length",
-    return_offsets_mapping=True,
-)
-```
+## 參考
 
-tokenizer 產生：
-
-| 欄位 | 用途 |
-| --- | --- |
-| `input_ids` | 模型輸入 token ids。訓練時會餵給模型。 |
-| `attention_mask` | 告訴模型哪些位置是有效 token，哪些是 padding。訓練時會餵給模型。 |
-| `token_type_ids` | 部分模型會有，用來區分第一段與第二段。DeBERTa / RoBERTa 類模型不一定需要。 |
-| `offset_mapping` | 每個 token 對應回原始文字的 character range。建立 label 與 validation decode 時使用。 |
-
-## 🏷️ Label Building
-token-level labels ( 訓練時的 ground truth label )
-
-label building 使用：
-`char_spans` + `offset_mapping`
-
-規則：
-
-```text
-special token / padding / feature_text token -> label = -100（計算loss時呼略）
-pn_history token 且與任一 char_span 重疊 -> label = 1
-pn_history token 但沒有與 char_span 重疊 -> label = 0
-```
-
-例子：
-
-```text
-char_spans: [(203, 217)]
-
-token: chest     offset: (203, 208) -> label = 1
-token: pressure  offset: (209, 217) -> label = 1
-token: denies    offset: (400, 406) -> label = 0
-```
-
-注：`offset_mapping` 是在 tokenization 時產生。訓練時模型不需要直接吃 `offset_mapping`，但 validation 後處理一定會用到，所以 dataset 需要保留。
-
-## 🏋️ Training
-
-每個 fold 的切法：
-
-```python
-train_df = df[df["fold"] != k]
-valid_df = df[df["fold"] == k]
-```
-
-模型訓練時主要輸入：
-
-```text
-input_ids
-attention_mask
-labels
-```
-(`token_type_ids`看選的模型需不需要)
-
-## ✅ Validation 後處理
-
-流程：
-
-```text
-logits
-↓
-softmax / sigmoid
-↓
-token probabilities
-↓
-threshold
-↓
-predicted token labels
-↓
-offset_mapping
-↓
-predicted character spans
-```
-validation inference 後，模型會輸出每個 token 的 logits 
-threshold 在 validation 上調整 常見 threshold：0.5
-
-decode 時需要做：
-
-- 把預測為答案的 token 用 `offset_mapping` 轉回 `character span`。
-- 相鄰或中間只隔空白的 token 合併成同一段 span。
-- 多個不連續答案用分號串起來。
-- 沒有預測答案時輸出空字串。
-
-輸出格式範例：
-
-```text
-203 217
-203 217;300 315
-```
-
-validation scoring 使用 character-level F1 (micro F1)：
-
-```text
-TP = 預測且正確的 character
-FP = 預測但不該預測的 character
-FN = 沒預測到但應該預測的 character
-```
-
-## 🧪 Test Inference 與 Submission
-
-test 流程：
-
-```text
-tokenization
-↓
-model inference
-↓
-probabilities
-↓
-threshold
-↓
-offset_mapping decode
-↓
-location string
-```
-
-submission 格式：
-
-```csv
-id,location
-00016_000,203 217
-00016_001,
-00016_002,100 110;150 165
-```
-
-最後輸出：`submission.csv`
-
-## 🔀 Ensemble
-
-ensemble 在 token probability 階段平均：    
-(平均 token probabilities 保留更多 token-level 資訊通常比起各模型先 decode 成 span 後再投票更穩)
-
-```text
-model_1 probabilities
-model_2 probabilities
-model_3 probabilities
-↓
-average probabilities
-↓
-threshold
-↓
-decode to character spans
-```
-
-
-
-## 🗺️ 整體流程
-
-```text
-train_preprocessed_5fold.pkl
-│
-├─ 欄位：
-│  id
-│  case_num
-│  pn_num
-│  feature_num
-│  pn_history
-│  feature_text
-│  annotation_text
-│  char_spans
-│  fold
-│
-↓
-選擇 backbone
-DeBERTa / RoBERTa / ClinicalBERT
-│
-↓
-選擇任務方法
-token classification
-│
-↓
-根據 fold 切 train / valid
-train = fold != k
-valid = fold == k
-│
-↓
-Tokenization
-使用 feature_text + pn_history
-產生 input_ids、attention_mask、offset_mapping
-│
-↓
-Label Building
-使用 char_spans + offset_mapping
-產生 token-level labels
-│
-↓
-Model Training
-input_ids + attention_mask → model
-token-level labels → calculate loss
-│
-↓
-Validation Inference
-輸出 token probabilities
-│
-↓
-Decoding
-token probabilities → predicted token spans
-│
-↓
-Character Mapping
-predicted token spans + offset_mapping → predicted location
-│
-↓
-Post-processing
-修正空白、標點、span 邊界、多段 span
-│
-↓
-Validation Score / Threshold Tuning
-│
-↓
-Test Inference
-│
-↓
-Submission
-id + predicted character-level location
-```
+- 訓練 baseline：[librauee/train-deberta-v3-large-baseline](https://www.kaggle.com/code/librauee/train-deberta-v3-large-baseline)
+- 推論 baseline：[librauee/infer-deberta-v3-large-baseline](https://www.kaggle.com/code/librauee/infer-deberta-v3-large-baseline)
+- 模型：[microsoft/deberta-v3-large](https://huggingface.co/microsoft/deberta-v3-large)、[microsoft/deberta-v3-base](https://huggingface.co/microsoft/deberta-v3-base)
